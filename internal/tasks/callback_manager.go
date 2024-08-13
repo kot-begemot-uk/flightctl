@@ -31,6 +31,9 @@ const (
 
 	// Task to re-evaluate fleets and devices if a repository resource changes
 	RepositoryUpdatesTask = "repository-updates"
+
+	// Task to sign a CSR
+	SignerTask = "csr-sign"
 )
 
 type CallbackManager interface {

@@ -35,6 +35,8 @@ func dispatchTasks(store store.Store, callbackManager CallbackManager, k8sClient
 			return deviceRender(ctx, &reference, store, callbackManager, k8sClient, log)
 		case RepositoryUpdatesTask:
 			return repositoryUpdate(ctx, &reference, store, callbackManager, log)
+		case SignerTask:
+			return asyncSign(ctx, &reference, store, callbackManager, log)
 		default:
 			return fmt.Errorf("unexpected task name %s", reference.TaskName)
 		}
