@@ -2,93 +2,134 @@ package tasks
 
 import (
 	"context"
+	"sync"
 
+	"github.com/flightctl/flightctl/api/v1alpha1"
 	"github.com/flightctl/flightctl/internal/store"
-	"github.com/flightctl/flightctl/internal/store/model"
-    "github.com/flightctl/flightctl/internal/crypto"
+	"github.com/flightctl/flightctl/internal/crypto"
 	"github.com/sirupsen/logrus"
-    "gorm.io/gorm"
 )
 
-type ProcessCSR interface {
-    RunBatch(batch_size int) error
-    InitialMigration() error
-}
-
-type ProcessCSRStore struct {
-	db  *gorm.DB
-	log logrus.FieldLogger
-    ProcessCSR
-}
-
 const DefaultBatchSize = 100
-
-// Postgres JSONB query for cert reqs which are yet to be signed
-// WHERE Status->'certificate' is not null
-
-func NewProcessCSR(store store.Store, log logrus.FieldLogger) ProcessCSR {
-	return &ProcessCSRStore{db: store.CertificateSigningRequest().db, log: log}
-}
-
-func (s *ProcessCSRStore) InitialMigration() error {
-	res := s.db.AutoMigrate(&model.CertificateSigningRequest{})
-    if res != nil {
-        return res
-    }
-    return s.db.AutoMigrate(&model.EnrollmentRequest{})
-}
-
-func (s *ProcessCSRStore) RunBatch(batch_size int) error {
-    var csrs []  model.CertificateSigningRequest
-    s.db.Where("Status->'certificate' is not null").Find(&csrs).Limit(batch_size)
-    ca := crypto.GetDefaultCA()
-    if ca == nil {
-        // CA has not been instantiated yet, we return and let the processing
-        // take place on the next attempt
-        return nil
-    }
-    for _, csrData := range csrs {
-
-        csr, err := crypto.ParseCSR(csrData.Spec.Data.Request)
-        if err == nil {
-            cert, err := ca.IssueRequestedClientCertificate(csr, int(*csrData.Spec.Data.ExpirationSeconds) / (24 * 3600))
-            if err == nil {
-                csrData.Status.Data.Certificate = &cert
-                s.db.Save(csrData)
-            }
-        }
-	}
-    return nil
-}
+const DefaultCSRExpiry = 7 * 24 *60
+const DefaultEnrollExpiry = 365 * 24 * 60
+var caMutex sync.Mutex
 
 func asyncSign(ctx context.Context, resourceRef *ResourceReference, store store.Store, callbackManager CallbackManager, log logrus.FieldLogger) error {
 
-    switch resourceRef.Op {
-    case AsyncSignOpSignAll:
-        var ret =  asyncSignEnrollment(ctx, resourceRef, store, callbackManager, log)
-        if ret != nil {
-            return ret
-        }
-        return asyncSignCSR(ctx, resourceRef, store, callbackManager, log)
-    case AsyncSignOpSignCSR:
-        return asyncSignCSR(ctx, resourceRef, store, callbackManager, log)
-    case AsyncSignOpSignEnrollment:
-        return asyncSignEnrollment(ctx, resourceRef, store, callbackManager, log)
-    default:
-		log.Errorf("asyncSign called with unexpected op %s", resourceRef.Op)
+	// Only one instance is run at any given time
+
+	if !caMutex.TryLock() {
+		return nil
+	}
+	defer caMutex.Unlock()
+
+	// Run repeatedly until there are no records to process.
+	// Process DefaultBatchSize at a time
+
+	var count = 1
+
+	for count > 0 {
+		switch resourceRef.Op {
+		case AsyncSignOpSignAll:
+			 count, err := asyncSignEnrollment(ctx, resourceRef, store, callbackManager, log)
+			 if err != nil {
+			     return err
+			 }
+			 extra, _ := asyncSignCSR(ctx, resourceRef, store, callbackManager, log)
+			 count += extra
+		case AsyncSignOpSignCSR:
+			 count, _ = asyncSignCSR(ctx, resourceRef, store, callbackManager, log)
+		case AsyncSignOpSignEnrollment:
+			 count, _ = asyncSignEnrollment(ctx, resourceRef, store, callbackManager, log)
+		default:
+			log.Errorf("asyncSign called with unexpected op %s", resourceRef.Op)
+		}
 	}
 	return nil
 }
 
-func asyncSignEnrollment(ctx context.Context, resourceRef *ResourceReference, store store.Store, callbackManager CallbackManager, log logrus.FieldLogger) error {
 
-    // query database, find all unsigned csrs, submit them for signing
-    return nil
+
+func asyncSignEnrollment(ctx context.Context, resourceRef *ResourceReference, dbStore store.Store, callbackManager CallbackManager, log logrus.FieldLogger) (int, error) {
+
+	listParams := store.ListParams{Limit:DefaultBatchSize}
+
+	filterMap, err := store.ConvertFieldFilterParamsToMap([]string{"status.certificate=null", "status.conditions != null"}) // this should never return an err
+
+	if err != nil  {
+		return 0, err
+	}
+	
+	listParams.Filter = filterMap
+	orgId := store.NullOrgId
+	ereqs, err := dbStore.EnrollmentRequest().List(ctx, orgId, listParams)
+	if err != nil {
+		return 0, err
+	}
+
+	ca := crypto.GetDefaultCA()
+
+	count := 0
+
+	for _, ereq := range ereqs.Items {
+		if v1alpha1.IsStatusConditionTrue(ereq.Status.Conditions, v1alpha1.EnrollmentRequestApproved) {
+			csr, err := crypto.ParseCSR([]byte(ereq.Spec.Csr))
+			if err == nil {
+				cert, err := ca.IssueRequestedClientCertificate(csr, DefaultEnrollExpiry)
+				if err == nil {
+					signed := string(cert)
+					ereq.Status.Certificate = &signed
+					dbStore.EnrollmentRequest().UpdateStatus(ctx, orgId, &ereq)
+					count++
+				}
+			}
+		}
+	}
+	return count, nil
+
 }
 
-func asyncSignCSR(ctx context.Context, resourceRef *ResourceReference, store store.Store, callbackManager CallbackManager, log logrus.FieldLogger) error {
-    processCSR := NewProcessCSR(store, log)
-    processCSR.RunBatch(DefaultBatchSize)
-    return nil
+func asyncSignCSR(ctx context.Context, resourceRef *ResourceReference, dbStore store.Store, callbackManager CallbackManager, log logrus.FieldLogger) (int, error) {
+
+	listParams := store.ListParams{Limit:DefaultBatchSize}
+
+	filterMap, err := store.ConvertFieldFilterParamsToMap([]string{"status.certificate=null", "status.conditions != null"}) // this should never return an err
+
+	if err != nil  {
+		return 0, err
+	}
+	
+	listParams.Filter = filterMap
+	orgId := store.NullOrgId
+	ereqs, err := dbStore.CertificateSigningRequest().List(ctx, orgId, listParams)
+	if err != nil {
+		return 0, err
+	}
+
+	ca := crypto.GetDefaultCA()
+	count := 0
+
+	for _, ereq := range ereqs.Items {
+		if v1alpha1.IsStatusConditionTrue(ereq.Status.Conditions, v1alpha1.CertificateSigningRequestApproved) {
+			csr, err := crypto.ParseCSR([]byte(ereq.Spec.Request))
+			if err == nil {
+				expiry := DefaultCSRExpiry
+				if ereq.Spec.ExpirationSeconds != nil {
+					expiry = int(*ereq.Spec.ExpirationSeconds)
+				} 
+				cert, err := ca.IssueRequestedClientCertificate(csr, expiry)
+				if err == nil {
+					ereq.Status.Certificate = &cert
+					dbStore.CertificateSigningRequest().Update(ctx, orgId, &ereq)
+					count++
+				}
+
+			}
+		}
+	}
+
+	return count, nil
+
 }
 

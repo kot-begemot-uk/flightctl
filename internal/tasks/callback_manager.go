@@ -47,6 +47,8 @@ type CallbackManager interface {
 	TemplateVersionValidatedCallback(templateVersion *model.TemplateVersion)
 	FleetSourceUpdated(orgId uuid.UUID, name string)
 	DeviceSourceUpdated(orgId uuid.UUID, name string)
+	EnrollmentApproved(orgId uuid.UUID)
+	CSRApproved(orgId uuid.UUID)
 }
 
 type callbackManager struct {
@@ -119,6 +121,16 @@ func (t *callbackManager) FleetUpdatedCallback(before *model.Fleet, after *model
 		}
 		t.submitTask(FleetSelectorMatchTask, ref, op)
 	}
+}
+
+func (t *callbackManager) CSRApproved(orgId uuid.UUID) {
+	ref := ResourceReference{OrgID: orgId}
+	t.submitTask(SignerTask, ref, AsyncSignOpSignCSR)
+}
+
+func (t *callbackManager) EnrollmentApproved(orgId uuid.UUID) {
+	ref := ResourceReference{OrgID: orgId}
+	t.submitTask(SignerTask, ref, AsyncSignOpSignEnrollment)
 }
 
 func (t *callbackManager) FleetSourceUpdated(orgId uuid.UUID, name string) {
