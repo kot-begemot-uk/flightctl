@@ -45,7 +45,7 @@ func TestHttpsMTLSRepo(t *testing.T) {
 	require := require.New(t)
 
 	testDirPath := t.TempDir()
-	ca, _, err := crypto.EnsureCA(filepath.Join(testDirPath, "ca.crt"), filepath.Join(testDirPath, "ca.key"), "", "ca", 1)
+	ca, _, err := crypto.EnsureCA("repo-test", filepath.Join(testDirPath, "ca.crt"), filepath.Join(testDirPath, "ca.key"), "", "ca", 1)
 	require.NoError(err)
 
 	serverCerts, _, err := ca.EnsureServerCertificate(filepath.Join(testDirPath, "server.crt"), filepath.Join(testDirPath, "server.key"), []string{"localhost"}, 1)

@@ -45,7 +45,7 @@ func main() {
 	}
 	log.SetLevel(logLvl)
 
-	ca, _, err := crypto.EnsureCA(certFile(signerCertName), keyFile(signerCertName), "", signerCertName, caCertValidityDays)
+	ca, _, err := crypto.EnsureCA(crypto.DefaultCA, certFile(signerCertName), keyFile(signerCertName), "", signerCertName, caCertValidityDays)
 	if err != nil {
 		log.Fatalf("ensuring CA cert: %v", err)
 	}
