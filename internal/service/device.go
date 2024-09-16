@@ -78,7 +78,7 @@ func (h *ServiceHandler) ListDevices(ctx context.Context, request server.ListDev
 		return server.ListDevices400JSONResponse{Message: err.Error()}, nil
 	}
 
-	filterMap, err := ConvertFieldFilterParamsToMap(statusFilter)
+	filterMap, err := store.ConvertFieldFilterParamsToMap(statusFilter)
 	if err != nil {
 		return server.ListDevices400JSONResponse{Message: fmt.Sprintf("failed to convert status filter: %v", err)}, nil
 	}

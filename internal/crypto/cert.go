@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"sync"
 
 	"github.com/flightctl/flightctl/internal/flterrors"
 	oscrypto "github.com/openshift/library-go/pkg/crypto"
@@ -22,6 +23,7 @@ const ClientBootstrapCommonName = "client-enrollment"
 const ClientBootstrapCommonNamePrefix = "client-enrollment-"
 const AdminCommonName = "flightctl-admin"
 const DeviceCommonNamePrefix = "device:"
+const DefaultCA = "default-ca"
 
 func BootstrapCNFromName(name string) (string, error) {
 	if len(name) < 16 {
@@ -40,29 +42,47 @@ func CNFromDeviceFingerprint(fingerprint string) (string, error) {
 type TLSCertificateConfig oscrypto.TLSCertificateConfig
 
 type CA struct {
+	Id string
 	Config *TLSCertificateConfig
 
 	SerialGenerator oscrypto.SerialGenerator
 }
 
-func EnsureCA(certFile, keyFile, serialFile, subjectName string, expireDays int) (*CA, bool, error) {
-	if ca, err := GetCA(certFile, keyFile, serialFile); err == nil {
+var caMutex = &sync.Mutex{}
+var caList map[string]*CA = make(map[string]*CA)
+
+func EnsureCA(id, certFile, keyFile, serialFile, subjectName string, expireDays int) (*CA, bool, error) {
+	caMutex.Lock()
+	defer caMutex.Unlock()
+	if ca, err := GetCA(id, certFile, keyFile, serialFile); err == nil {
 		return ca, false, err
 	}
-	ca, err := MakeSelfSignedCA(certFile, keyFile, serialFile, subjectName, expireDays)
+	ca, err := MakeSelfSignedCA(id, certFile, keyFile, serialFile, subjectName, expireDays)
 	return ca, true, err
 }
 
-func GetCA(certFile, keyFile, serialFile string) (*CA, error) {
+func GetCA(id, certFile, keyFile, serialFile string) (*CA, error) {
 	ca, err := oscrypto.GetCA(certFile, keyFile, serialFile)
 	if err != nil {
 		return nil, err
 	}
 	config := TLSCertificateConfig(*ca.Config)
-	return &CA{Config: &config, SerialGenerator: ca.SerialGenerator}, err
+	loaded := &CA{Config: &config, SerialGenerator: ca.SerialGenerator, Id:id,}
+	caList[id] = loaded
+	return loaded, err
 }
 
-func MakeSelfSignedCA(certFile, keyFile, serialFile, subjectName string, expiryDays int) (*CA, error) {
+func GetCachedCAA(id string) (*CA) {
+	caMutex.Lock()
+	defer caMutex.Unlock()
+	ca, ok := caList[id]
+	if ok {
+		return ca
+	}
+	return nil
+}
+
+func MakeSelfSignedCA(id, certFile, keyFile, serialFile, subjectName string, expiryDays int) (*CA, error) {
 	caConfig, err := makeSelfSignedCAConfig(
 		pkix.Name{CommonName: subjectName},
 		time.Duration(expiryDays)*24*time.Hour,
@@ -89,10 +109,13 @@ func MakeSelfSignedCA(certFile, keyFile, serialFile, subjectName string, expiryD
 	}
 
 	config := TLSCertificateConfig(*caConfig)
-	return &CA{
+	ca := &CA{
 		SerialGenerator: serialGenerator,
 		Config:          &config,
-	}, nil
+		Id: id,
+	}
+	caList[id] = ca
+	return ca, nil
 }
 
 func makeSelfSignedCAConfig(subject pkix.Name, caLifetime time.Duration) (*oscrypto.TLSCertificateConfig, error) {
