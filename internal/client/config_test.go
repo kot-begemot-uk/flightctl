@@ -120,7 +120,7 @@ func TestClientConfig(t *testing.T) {
 			configFile := filepath.Join(testDirPath, "client.yaml")
 
 			// generate the CA and client certs
-			ca, _, err := crypto.EnsureCA(filepath.Join(testDirPath, "ca.crt"), filepath.Join(testDirPath, "ca.key"), "", signerCertName, caCertValidityDays)
+			ca, _, err := crypto.EnsureCA("config-test", filepath.Join(testDirPath, "ca.crt"), filepath.Join(testDirPath, "ca.key"), "", signerCertName, caCertValidityDays)
 			require.NoError(err)
 			clientCert, _, err := ca.EnsureClientCertificate(filepath.Join(testDirPath, "client-enrollment.crt"), filepath.Join(testDirPath, "client-enrollment.key"), clientBootstrapCertName, clientBootStrapValidityDays)
 			require.NoError(err)

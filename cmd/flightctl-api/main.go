@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	apiserver "github.com/flightctl/flightctl/internal/api_server"
@@ -20,14 +19,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	caCertValidityDays          = 365 * 10
-	serverCertValidityDays      = 365 * 1
-	clientBootStrapValidityDays = 365 * 1
-	signerCertName              = "ca"
-	serverCertName              = "server"
-	clientBootstrapCertName     = "client-enrollment"
-)
 
 func main() {
 	log := log.InitLogs()
@@ -46,7 +37,7 @@ func main() {
 	}
 	log.SetLevel(logLvl)
 
-	ca, _, err := crypto.EnsureCA(certFile(signerCertName), keyFile(signerCertName), "", signerCertName, caCertValidityDays)
+	ca, _, err := crypto.EnsureCA(crypto.DefaultCA, crypto.CertFile(crypto.SignerCertName), crypto.KeyFile(crypto.SignerCertName), "", crypto.SignerCertName, crypto.CaCertValidityDays)
 	if err != nil {
 		log.Fatalf("ensuring CA cert: %v", err)
 	}
@@ -56,12 +47,12 @@ func main() {
 		cfg.Service.AltNames = []string{"localhost"}
 	}
 
-	serverCerts, _, err := ca.EnsureServerCertificate(certFile(serverCertName), keyFile(serverCertName), cfg.Service.AltNames, serverCertValidityDays)
+	serverCerts, _, err := ca.EnsureServerCertificate(crypto.CertFile(crypto.ServerCertName), crypto.KeyFile(crypto.ServerCertName), cfg.Service.AltNames, crypto.ServerCertValidityDays)
 	if err != nil {
 		log.Fatalf("ensuring server cert: %v", err)
 	}
 
-	_, _, err = ca.EnsureClientCertificate(certFile(clientBootstrapCertName), keyFile(clientBootstrapCertName), crypto.ClientBootstrapCommonName, clientBootStrapValidityDays)
+	_, _, err = ca.EnsureClientCertificate(crypto.CertFile(crypto.ClientBootstrapCertName), crypto.KeyFile(crypto.ClientBootstrapCertName), crypto.ClientBootstrapCommonName, crypto.ClientBootStrapValidityDays)
 	if err != nil {
 		log.Fatalf("ensuring bootstrap client cert: %v", err)
 	}
@@ -138,12 +129,4 @@ func main() {
 	}()
 
 	<-ctx.Done()
-}
-
-func certFile(name string) string {
-	return filepath.Join(config.CertificateDir(), name+".crt")
-}
-
-func keyFile(name string) string {
-	return filepath.Join(config.CertificateDir(), name+".key")
 }

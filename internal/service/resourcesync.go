@@ -72,7 +72,7 @@ func (h *ServiceHandler) ListResourceSync(ctx context.Context, request server.Li
 
 	if request.Params.Repository != nil {
 		specFilter := []string{fmt.Sprintf("spec.repository=%s", *request.Params.Repository)}
-		filterMap, err := ConvertFieldFilterParamsToMap(specFilter)
+		filterMap, err := store.ConvertFieldFilterParamsToMap(specFilter)
 		if err != nil {
 			return server.ListResourceSync400JSONResponse{Message: fmt.Sprintf("failed to convert repository filter: %v", err)}, nil
 		}
