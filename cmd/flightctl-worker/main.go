@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/flightctl/flightctl/internal/config"
 	"github.com/flightctl/flightctl/internal/store"
+	"github.com/flightctl/flightctl/internal/crypto"
 	workerserver "github.com/flightctl/flightctl/internal/worker_server"
 	"github.com/flightctl/flightctl/pkg/k8sclient"
 	"github.com/flightctl/flightctl/pkg/log"
@@ -35,6 +36,11 @@ func main() {
 
 	store := store.NewStore(db, log.WithField("pkg", "store"))
 	defer store.Close()
+
+	_, _, err = crypto.EnsureCA(crypto.DefaultCA, crypto.CertFile(crypto.SignerCertName), crypto.KeyFile(crypto.SignerCertName), "", crypto.SignerCertName, crypto.CaCertValidityDays)
+	if err != nil {
+		log.Fatalf("ensuring CA cert: %v", err)
+	}
 
 	provider := queues.NewAmqpProvider(cfg.Queue.AmqpURL, log)
 	k8sClient, err := k8sclient.NewK8SClient()
