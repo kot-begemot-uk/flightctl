@@ -1,0 +1,16 @@
+{
+    "debug":true,
+    "auth": {
+        "url":"https://192.168.2.180:8200/",
+        "root_token":"",
+        "tls_verify":false
+    },
+    "approle": {
+        "secret_id_bound_cidrs":["192.168.0.0/16"],
+        "role_name":"flightctl",
+        "token_type":"batch"
+    },
+    "pkirole": {
+        "role_name":"flightctl"
+    }
+}

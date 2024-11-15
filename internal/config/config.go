@@ -28,7 +28,7 @@ type CryptographyConfig struct {
 	// leaving it two level after removing multiple CA support to
 	// allow moving expiry times and other common options to the
 	// config
-	CA		*CryptographyConfigEntry `json:"calist,oemitempty"`
+	CA		*CryptographyConfigEntry `json:"ca,oemitempty"`
 }
 
 type dbConfig struct {
@@ -77,8 +77,9 @@ type InternalCAConfig struct {
 type HashiCAConfig struct {
 	AppRole		string	`json:"approle"`
 	SecretID	string	`json:"secretid"`
-	CAURL		string	`json:"caUrl"`
-	AppRoleURL	string	`json:"approleUrl"`
+	VaultURL	string	`json:"vaultUrl"`
+	CAPath		string	`json:"caPath"`
+	AppRolePath	string	`json:"approlePath"`
 	Signer		string	`json:"signer"`
 	Role		string	`json:"role"`
 }

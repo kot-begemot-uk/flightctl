@@ -42,6 +42,8 @@ prometheus:
   enabled: true
 ui:
   enabled: false
+vault:
+  enabled: false
 
 keycloak:
   realm:

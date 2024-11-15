@@ -90,11 +90,19 @@ fi
 
 helm dependency build ./deploy/helm/flightctl
 
-helm upgrade --install --namespace flightctl-external \
+if [ -z "${USE_VAULT}" ] ; then
+    helm upgrade --install --namespace flightctl-external \
                   --values ./deploy/helm/flightctl/values.dev.yaml \
                   --set global.baseDomain=${IP}.nip.io \
                   ${ONLY_DB} ${DB_SIZE_PARAMS} ${AUTH_ARGS} ${HELM_DB_IMG} ${RABBITMQ_ARG} ${GATEWAY_ARGS} ${VALKEY_ARG} flightctl \
               ./deploy/helm/flightctl/ --kube-context kind-kind
+else 
+    helm upgrade --install --namespace flightctl-external \
+                  --values ./deploy/helm/flightctl/values.dev.vault.yaml \
+                  --set global.baseDomain=${IP}.nip.io \
+                  ${ONLY_DB} ${DB_SIZE_PARAMS} ${AUTH_ARGS} ${HELM_DB_IMG} ${RABBITMQ_ARG} ${GATEWAY_ARGS} ${VALKEY_ARG} flightctl \
+                  ./deploy/helm/flightctl/ --kube-context kind-kind
+fi
 
 kubectl rollout status statefulset flightctl-rabbitmq -n flightctl-internal -w --timeout=300s
 
