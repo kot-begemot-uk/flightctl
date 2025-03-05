@@ -1,12 +1,16 @@
 package crypto
 
 import (
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"os"
 
-	oscrypto "github.com/openshift/library-go/pkg/crypto"
+	"github.com/flightctl/flightctl/internal/flterrors"
 	"k8s.io/apimachinery/pkg/util/sets"
+	oscrypto "github.com/openshift/library-go/pkg/crypto"
 )
 
 // Wraps openshift/library-go/pkg/crypto to use ECDSA and simplify the interface
@@ -58,11 +62,47 @@ func (ca *CA) MakeAndWriteServerCert(certFile, keyFile string, hostnames []strin
 	return server, nil
 }
 
+func (ca *CA) MakeServerCert(hostnames []string, expiryDays int) (*TLSCertificateConfig, error) {
+	if len(hostnames) < 1 {
+		return nil, fmt.Errorf("at least one hostname must be provided")
+	}
+
+	_, serverPrivateKey, _ := NewKeyPair()
+
+	serverTemplate := &x509.CertificateRequest{
+		Subject: pkix.Name{CommonName: hostnames[0]},
+	}
+	serverTemplate.IPAddresses, serverTemplate.DNSNames = oscrypto.IPAddressesDNSNames(hostnames)
+
+	raw, err := x509.CreateCertificateRequest(rand.Reader, serverTemplate, serverPrivateKey)
+	if err != nil {
+		return nil, err
+	}
+	csr, err := x509.ParseCertificateRequest(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	serverCrt, err := ca.IssueRequestedServerCertificateAsX509(csr, expiryDays * 24 * 3600)
+	if err != nil {
+		return nil, err
+	}
+	server := &TLSCertificateConfig{
+		Certs: append([]*x509.Certificate{serverCrt}, ca.Config.Certs...),
+		Key:   serverPrivateKey,
+	}
+	return server, nil
+}
+
 func (ca *CA) EnsureClientCertificate(certFile, keyFile string, subjectName string, expireDays int) (*TLSCertificateConfig, bool, error) {
 	certConfig, err := GetClientCertificate(certFile, keyFile, subjectName)
 	if err != nil {
-		certConfig, err = ca.MakeClientCertificate(certFile, keyFile, subjectName, expireDays)
-		return certConfig, true, err // true indicates we wrote the files.
+		certConfig, err := ca.MakeClientCert(certFile, keyFile, subjectName, expireDays)
+		if err != nil {
+			return nil, false, err
+		}
+		err = certConfig.WriteCertConfigFile(certFile, keyFile);
+		return certConfig, err == nil, err // true indicates we wrote the files.
 	}
 	return certConfig, false, nil
 }
@@ -81,6 +121,34 @@ func GetClientCertificate(certFile, keyFile string, subjectName string) (*TLSCer
 	client := TLSCertificateConfig(*internalConfig)
 	return &client, nil
 }
+
+func (ca *CA) MakeClientCert(certFile, keyFile string, subjectName string, expiryDays int) (*TLSCertificateConfig, error) {
+
+	_, clientPrivateKey, _ := NewKeyPair()
+
+	clientTemplate := &x509.CertificateRequest{
+		Subject: pkix.Name{CommonName: subjectName},
+	}
+	raw, err := x509.CreateCertificateRequest(rand.Reader, clientTemplate, clientPrivateKey)
+	if err != nil {
+		return nil, err
+	}
+	csr, err := x509.ParseCertificateRequest(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	clientCrt, err := ca.IssueRequestedClientCertificateAsX509(csr, expiryDays * 24 * 3600)
+	if err != nil {
+		return nil, err
+	}
+	client := &TLSCertificateConfig{
+		Certs: append([]*x509.Certificate{clientCrt}, ca.Config.Certs...),
+		Key:   clientPrivateKey,
+	}
+	return client, nil
+}
+
 
 func GetTLSCertificateConfig(certFile, keyFile string) (*TLSCertificateConfig, error) {
 	internalConfig, err := oscrypto.GetTLSCertificateConfig(certFile, keyFile)
@@ -108,6 +176,40 @@ func (c *TLSCertificateConfig) GetPEMBytes() ([]byte, []byte, error) {
 
 	return certBytes, keyBytes, nil
 }
+
+func (ca *CA) IssueRequestedClientCertificateAsX509(csr *x509.CertificateRequest, expirySeconds int) (*x509.Certificate, error) {
+	return ca.IssueRequestedCertificateAsX509(csr, expirySeconds, []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth})
+}
+
+func (ca *CA) IssueRequestedClientCertificate(csr *x509.CertificateRequest, expirySeconds int) ([]byte, error) {
+	cert, err := ca.IssueRequestedClientCertificateAsX509(csr, expirySeconds)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", flterrors.ErrSignCert, err.Error())
+	}
+	certData, err := oscrypto.EncodeCertificates(cert)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", flterrors.ErrEncodeCert, err.Error())
+	}
+
+	return certData, nil
+}
+
+func (ca *CA) IssueRequestedServerCertificateAsX509(csr *x509.CertificateRequest, expirySeconds int) (*x509.Certificate, error) {
+	return ca.IssueRequestedCertificateAsX509(csr, expirySeconds, []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth})
+}
+func (ca *CA) IssueRequestedServerCertificate(csr *x509.CertificateRequest, expirySeconds int) ([]byte, error) {
+	cert, err := ca.IssueRequestedServerCertificateAsX509(csr, expirySeconds)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", flterrors.ErrSignCert, err.Error())
+	}
+	certData, err := oscrypto.EncodeCertificates(cert)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", flterrors.ErrEncodeCert, err.Error())
+	}
+
+	return certData, nil
+}
+
 
 // CanReadCertAndKey checks if both the certificate and key files exist and are readable.
 // Returns true if both files are accessible, false if neither exists, and an error if one is missing.
