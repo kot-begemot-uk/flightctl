@@ -36,7 +36,7 @@ func NewDefault(tempDir string) *Config {
 		AdminCommonName:                 "flightctl-admin",
 		ClientBootstrapCertName:         "client-enrollment",
 		ClientBootstrapCommonName:       "client-enrollment",
-		ClientBootstrapSignerName:       "client-enrollment",
+		ClientBootstrapSignerName:       "enrollment",
 		ClientBootstrapCommonNamePrefix: "client-enrollment-",
 		ClientBootstrapValidityDays:     365,
 		ServerCertValidityDays:          365,
