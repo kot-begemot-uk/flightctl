@@ -24,7 +24,7 @@ type Config struct {
 	ClientBootstrapCommonNamePrefix string         `json:"clientBootstrapCommonNamePrefix,omitempty"`
 	ClientBootstrapValidityDays     int            `json:"clientBootStrapValidityDays,omitempty"`
 	DeviceCommonNamePrefix          string         `json:"deviceCommonNamePrefix,omitempty"`
-	InternalConfig                  *InternalCACfg `json:"internalConfig,omitempty"`
+	InternalConfig                  *InternalCfg `json:"internalConfig,omitempty"`
 	ServerCertValidityDays          int            `json:"serverCertValidityDays,omitempty"`
 	ExtraAllowedPrefixes            []string       `json:"extraAllowedPrefixes,omitempty"`
 }
