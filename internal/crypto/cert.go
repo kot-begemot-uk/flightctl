@@ -23,14 +23,14 @@ type CABackend interface {
 
 type CAClient struct {
 	caBackend CABackend
-	Cfg       *ca_config.CAConfigType
+	Cfg       *ca_config.Config
 }
 
 // EnsureCA() tries to load or generate a CA and connect to it.
 // If the CA is successfully loaded or generated it returns a valid CA instance, a flag signifying
 // was it loaded or generated and a nil error.
 // In case of errors a non-nil error is returned.
-func EnsureCA(cfg *ca_config.CAConfigType) (*CAClient, bool, error) {
+func EnsureCA(cfg *ca_config.Config) (*CAClient, bool, error) {
 	caBackend, fresh, err := ensureInternalCA(cfg)
 	if err != nil {
 		return nil, fresh, err

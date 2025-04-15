@@ -19,19 +19,19 @@ type internalCA struct {
 	SerialGenerator oscrypto.SerialGenerator
 }
 
-func ensureInternalCA(cfg *ca_config.CAConfigType) (CABackend, bool, error) {
+func ensureInternalCA(cfg *ca_config.Config) (CABackend, bool, error) {
 
-	caCertFile := CertStorePath(cfg.InternalCAConfig.CaCertFile, cfg.InternalCAConfig.CACertStore)
-	caKeyFile := CertStorePath(cfg.InternalCAConfig.CaKeyFile, cfg.InternalCAConfig.CACertStore)
-	caSerialFile := cfg.InternalCAConfig.CaSerialFile
+	caCertFile := CertStorePath(cfg.InternalCfg.CaCertFile, cfg.InternalCfg.CACertStore)
+	caKeyFile := CertStorePath(cfg.InternalCAConfig.CaKeyFile, cfg.InternalCfg.CACertStore)
+	caSerialFile := cfg.InternalCfg.CaSerialFile
 	if len(cfg.InternalCAConfig.CaSerialFile) > 0 {
-		caSerialFile = CertStorePath(cfg.InternalCAConfig.CaSerialFile, cfg.InternalCAConfig.CACertStore)
+		caSerialFile = CertStorePath(cfg.InternalCfg.CaSerialFile, cfg.InternalCfg.CACertStore)
 	}
 	ca, err := GetCA(caCertFile, caKeyFile, caSerialFile)
 	if err == nil {
 		return ca, false, err
 	}
-	ca, err = MakeSelfSignedCA(caCertFile, caKeyFile, caSerialFile, cfg.InternalCAConfig.SignerCertName, cfg.InternalCAConfig.CaCertValidityDays)
+	ca, err = MakeSelfSignedCA(caCertFile, caKeyFile, caSerialFile, cfg.InternalCfg.SignerCertName, cfg.InternalCfg.CaCertValidityDays)
 	if err != nil {
 		return nil, false, err
 	}
