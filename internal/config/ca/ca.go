@@ -45,7 +45,7 @@ func NewDefault(tempDir string) *Config {
 			CertFile:         "ca.crt",
 			KeyFile:          "ca.key",
 			CertValidityDays: 3650,
-			SignerCertName:     "ca",
+			SignerCertName:   "ca",
 			CertStore:        tempDir,
 		},
 	}
