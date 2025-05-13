@@ -54,15 +54,22 @@ func approveAndSignEnrollmentRequest(ca *crypto.CAClient, enrollmentRequest *api
 
 	expirySeconds := ClientCertExpiryDays * 24 * 60 * 60
 	certData, err := ca.IssueRequestedClientCertificate(csr, expirySeconds)
-	if err != nil {
+	switch crypto.ErrorCode(err) {
+	case crypto.LibraryError:
 		return err
+	case crypto.NoError:
+		enrollmentRequest.Status = &api.EnrollmentRequestStatus{
+			Certificate: lo.ToPtr(string(certData)),
+			Conditions:  []api.Condition{},
+			Approval:    approval,
+		}
+	case crypto.AsyncOperation:
+		enrollmentRequest.Status = &api.EnrollmentRequestStatus{
+			Certificate: nil,
+			Conditions:  []api.Condition{},
+			Approval:    approval,
+		}
 	}
-	enrollmentRequest.Status = &api.EnrollmentRequestStatus{
-		Certificate: lo.ToPtr(string(certData)),
-		Conditions:  []api.Condition{},
-		Approval:    approval,
-	}
-
 	// union user-provided labels with agent-provided labels
 	if enrollmentRequest.Spec.Labels != nil {
 		for k, v := range *enrollmentRequest.Spec.Labels {

@@ -47,8 +47,9 @@ func (h *ServiceHandler) signApprovedCertificateSigningRequest(ctx context.Conte
 	}
 
 	signedCert, err := signApprovedCertificateSigningRequest(h.ca, *csr)
-	if err != nil {
-		api.SetStatusCondition(&csr.Status.Conditions, api.Condition{
+	switch crypto.ErrorCode(err) {
+        case crypto.LibraryError:
+       		api.SetStatusCondition(&csr.Status.Conditions, api.Condition{
 			Type:    api.CertificateSigningRequestFailed,
 			Status:  api.ConditionStatusTrue,
 			Reason:  "SigningFailed",
@@ -58,11 +59,13 @@ func (h *ServiceHandler) signApprovedCertificateSigningRequest(ctx context.Conte
 			h.log.WithError(err).Error("failed to set failure condition")
 		}
 		return
-	}
-
-	csr.Status.Certificate = &signedCert
-	if _, err := h.store.CertificateSigningRequest().UpdateStatus(ctx, orgId, csr); err != nil {
-		h.log.WithError(err).Error("failed to set signed certificate")
+	case crypto.NoError:
+		csr.Status.Certificate = &signedCert
+		if _, err := h.store.CertificateSigningRequest().UpdateStatus(ctx, orgId, csr); err != nil {
+			h.log.WithError(err).Error("failed to set signed certificate")
+		}
+        case crypto.AsyncOperation:
+		// Do Nothing, background processing in progress
 	}
 }
 
